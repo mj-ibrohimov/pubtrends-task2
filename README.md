@@ -71,6 +71,8 @@ http://127.0.0.1:5000
 - Implements cosine similarity for dataset comparison
 - Visualizes clusters using Plotly.js
 - Handles rate limiting and error cases for NCBI API calls
+- Special handling for GDS to GSE ID mapping (e.g., PMID 30530648 returns internal ID 200116672 which maps to GSE116672)
+- Fallback methods to find GSE accessions when standard API calls fail
 
 ## Error Handling
 
@@ -79,6 +81,16 @@ The application includes robust error handling for:
 - API rate limits
 - Network issues
 - Missing or malformed data
+- Non-standard GEO ID formats and mappings
+
+## Known Issues and Workarounds
+
+- Some PMIDs (like 30530648) return internal GDS IDs from the eutils API instead of GSE accessions.
+  The application includes special mapping to handle these cases.
+- The NCBI API has rate limits. Excessive requests may be throttled. The application implements
+  exponential backoff to handle this situation.
+- Dataset clustering requires at least 2 valid datasets with sufficient text content.
+  Single datasets will be displayed without clustering visualization.
 
 ## Contributing
 

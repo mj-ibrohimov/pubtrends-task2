@@ -77,6 +77,35 @@
             border-radius: 4px;
             background-color: #f8d7da;
         }
+        .warning {
+            color: #856404;
+            background-color: #fff3cd;
+            padding: 10px;
+            margin: 10px 0;
+            border-radius: 4px;
+        }
+        .dataset-list {
+            margin-top: 20px;
+        }
+        .debug-info {
+            margin-top: 20px;
+            padding: 15px;
+            background-color: #f8f9fa;
+            border-radius: 4px;
+            font-family: monospace;
+            white-space: pre-wrap;
+            font-size: 12px;
+        }
+        .example {
+            margin-top: 10px;
+            color: #6c757d;
+            font-size: 0.9em;
+        }
+        .example code {
+            background-color: #f8f9fa;
+            padding: 2px 4px;
+            border-radius: 4px;
+        }
     </style>
 </head>
 <body>
@@ -85,6 +114,9 @@
         <div class="form-group">
             <label for="pmids">Enter PubMed IDs (PMIDs) - one per line:</label>
             <textarea id="pmids" placeholder="Enter PMIDs, one per line&#10;Example:&#10;25404168&#10;12345678"></textarea>
+            <div class="example">
+                <p>Try these example PMIDs: <code>25404168</code>, <code>28683258</code>, <code>29444459</code></p>
+            </div>
         </div>
         <button id="analyzeBtn" onclick="analyzeDatasets()">Analyze Datasets</button>
         <div id="loading" class="loading">
@@ -93,6 +125,7 @@
         <div id="error" class="error"></div>
         <div id="visualization"></div>
         <div id="results"></div>
+        <div id="debug" class="debug-info" style="display: none;"></div>
     </div>
 
     <script>
@@ -112,6 +145,7 @@
             const error = document.getElementById('error');
             const visualization = document.getElementById('visualization');
             const results = document.getElementById('results');
+            const debug = document.getElementById('debug');
             
             // Update UI state
             analyzeBtn.disabled = true;
@@ -119,6 +153,8 @@
             error.style.display = 'none';
             visualization.innerHTML = '';
             results.innerHTML = '';
+            debug.style.display = 'none';
+            debug.innerHTML = '';
 
             try {
                 const response = await fetch('/api/analyze', {
@@ -131,20 +167,43 @@
 
                 const data = await response.json();
                 
+                // Handle error response with data
                 if (!response.ok) {
-                    throw new Error(data.error || 'Failed to analyze datasets');
+                    // If we have datasets despite the error, show them
+                    if (data.datasets && data.datasets.length > 0) {
+                        showWarning(`Error: ${data.error}. Showing available data without visualization.`);
+                        displayDatasetList(data.datasets);
+                        
+                        // Show debug info if available
+                        if (data.text_samples) {
+                            debug.style.display = 'block';
+                            debug.innerHTML = `<h3>Debug Information</h3>
+                                <p>Text samples from datasets:</p>
+                                <ul>${data.text_samples.map(t => `<li>${t}</li>`).join('')}</ul>`;
+                        }
+                    } else {
+                        throw new Error(data.error || 'Failed to analyze datasets');
+                    }
+                    return;
                 }
 
-                if (data.datasets.length === 0) {
+                if (!data.datasets || data.datasets.length === 0) {
                     showError('No datasets found for the provided PMIDs');
                     return;
                 }
 
-                // Create visualization
-                createVisualization(data);
-                
-                // Display cluster information
-                displayClusterInfo(data);
+                // Create visualization if we have clusters and coordinates
+                if (data.clusters && data.coordinates && data.datasets.length > 1) {
+                    createVisualization(data);
+                    displayClusterInfo(data);
+                } else if (data.datasets.length === 1) {
+                    // Special case for a single dataset
+                    showWarning("Only one dataset found. Clustering requires at least 2 datasets.");
+                    displayDatasetList(data.datasets);
+                } else {
+                    showWarning("Insufficient data for visualization. Showing available datasets.");
+                    displayDatasetList(data.datasets);
+                }
                 
             } catch (error) {
                 showError(error.message);
@@ -247,8 +306,31 @@
             document.getElementById('results').appendChild(clusterInfo);
         }
 
+        function displayDatasetList(datasets) {
+            const datasetList = document.createElement('div');
+            datasetList.className = 'dataset-list';
+            
+            let html = '<h2>Available Datasets</h2>';
+            
+            datasets.forEach(dataset => {
+                html += `
+                    <div class="dataset-card">
+                        <h4>${dataset.title || 'No Title'}</h4>
+                        <p><strong>GSE ID:</strong> ${dataset.gse_id}</p>
+                        <p><strong>PMID:</strong> ${dataset.pmid}</p>
+                        <p><strong>Type:</strong> ${dataset.type || 'N/A'}</p>
+                        <p><strong>Organism:</strong> ${dataset.organism || 'N/A'}</p>
+                        <p><strong>Summary:</strong> ${dataset.summary || 'No summary available'}</p>
+                    </div>
+                `;
+            });
+
+            datasetList.innerHTML = html;
+            document.getElementById('results').appendChild(datasetList);
+        }
+
         function getCommonValues(datasets, field) {
-            const values = new Set(datasets.map(d => d[field]));
+            const values = new Set(datasets.map(d => d[field] || 'N/A'));
             return Array.from(values).join(', ');
         }
 
@@ -256,6 +338,13 @@
             const error = document.getElementById('error');
             error.textContent = message;
             error.style.display = 'block';
+        }
+
+        function showWarning(message) {
+            const warning = document.createElement('div');
+            warning.className = 'warning';
+            warning.textContent = message;
+            document.getElementById('results').prepend(warning);
         }
     </script>
 </body>
